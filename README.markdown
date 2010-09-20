@@ -57,6 +57,12 @@ Manipulating tabs:
     t          create tab
     d          close current tab
     u          restore closed tab (i.e. unwind the 'd' command)
+    gh         move current tab to first (or n-th) position to the left
+    gl         move current tab to first (or n-th) position to the right
+    gp         move current tab to last (or n-th) position in window
+    gP         move current tab to marked position (may be in another window)
+    gm         mark position of current (or n-th) tab in this window
+    gM         discard marked tab position (next gP will tear tab into new window)
 
 Vimium supports command repetition so, for example, hitting '5t' will open 5 tabs in rapid succession. ESC (or
 <c-[>) will clear any partial commands in the queue.

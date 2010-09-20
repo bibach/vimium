@@ -79,7 +79,8 @@ function initializePreDomReady() {
           if (args.passCountToFunction) {
             this[args.command].call(null, args.count);
           } else {
-            for (var i = 0; i < args.count; i++) { this[args.command].call(); }
+            var count = (args.count == null || isNaN(args.count) ? 1 : args.count);
+            for (var i = 0; i < count; i++) { this[args.command].call(); }
           }
         }
 
@@ -208,10 +209,10 @@ function focusInput(count) {
                                   XPathResult.ORDERED_NODE_ITERATOR_TYPE, null);
 
   var lastInputBox;
-  var i = 0;
+  var i = (isNaN(count) ? 1 : count);
 
-  while (i < count) {
-    i += 1;
+  while (i > 0) {
+    i -= 1;
 
     var currentInputBox = results.iterateNext();
     if (!currentInputBox) { break; }

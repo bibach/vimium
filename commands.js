@@ -123,6 +123,12 @@ function clearKeyMappingsAndSetDefaults() {
   mapKeyToCommand('J', 'previousTab');
   mapKeyToCommand('gt', 'nextTab');
   mapKeyToCommand('gT', 'previousTab');
+  mapKeyToCommand('gh', 'moveTabLeft');
+  mapKeyToCommand('gl', 'moveTabRight');
+  mapKeyToCommand('gp', 'putTab');
+  mapKeyToCommand('gP', 'placeTab');
+  mapKeyToCommand('gm', 'markTab');
+  mapKeyToCommand('gM', 'unmarkTab');
 
   mapKeyToCommand('t', 'createTab');
   mapKeyToCommand('d', 'removeTab');
@@ -174,6 +180,12 @@ addCommand('previousTab',         'Go one tab left',   true);
 addCommand('createTab',           'Create new tab',    true);
 addCommand('removeTab',           'Close current tab', true);
 addCommand('restoreTab',          "Restore closed tab", true);
+addCommand('moveTabLeft',         'Move tab to first (or n-th) position to left', true, true);
+addCommand('moveTabRight',        'Move tab to first (or n-th) position to right', true, true);
+addCommand('putTab',              'Move tab to last (or n-th) position in window', true, true);
+addCommand('placeTab',            'Move tab to marked position (may be in another window)', true);
+addCommand('markTab',             'Mark position of this (or n-th) tab in this window', true, true);
+addCommand('unmarkTab',           'Discard marked tab position', true);
 
 
 // An ordered listing of all available commands, grouped by type. This is the order they will
@@ -190,7 +202,7 @@ var commandGroups = {
   historyNavigation:
     ["goBack", "goForward"],
   tabManipulation:
-    ["nextTab", "previousTab", "createTab", "removeTab", "restoreTab"],
+    ["nextTab", "previousTab", "createTab", "removeTab", "restoreTab", "moveTabLeft", "moveTabRight", "putTab", "placeTab", "markTab", "unmarkTab"],
   misc:
     ["showHelp"]
 };

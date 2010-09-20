@@ -15,6 +15,8 @@
   var validFirstKeys = {};
   var singleKeyCommands = [];
 
+  var markedTab = null;
+
   // Keys are either literal characters, or "named" - for example <a-b> (alt+b), <left> (the left arrow) or <f12>
   // This regular expression captures two groups, the first is a named key, the second is the remainder of the string.
   var namedKeyRegex = /^(<[amc-].|(?:[amc]-)?[a-z0-9]{2,5}>)(.*)$/;
@@ -286,20 +288,106 @@
    * Selects a tab before or after the currently selected tab. Direction is either "next" or "previous".
    */
   function selectTab(callback, direction) {
+    getCurrentTabSet(true, function(tab, i, tabs) {
+      var delta = (direction == "next") ? 1 : -1;
+      var toSelect = tabs[(i + delta + tabs.length) % tabs.length];
+      selectionChangedHandlers.push(callback);
+      chrome.tabs.update(toSelect.id, { selected: true });
+    });
+  }
+
+  function getCurrentTabSet(excludeSoloTabs, callback) {
     chrome.tabs.getAllInWindow(null, function(tabs) {
-      if (tabs.length <= 1)
+      if (excludeSoloTabs && tabs.length <= 1)
         return;
       for (var i = 0; i < tabs.length; i++) {
         if (tabs[i].selected) {
-          var delta = (direction == "next") ? 1 : -1;
-          var toSelect = tabs[(i + delta + tabs.length) % tabs.length];
-          selectionChangedHandlers.push(callback);
-          chrome.tabs.update(toSelect.id, { selected: true });
+          (callback)(tabs[i], i, tabs);
           break;
         }
       }
     });
   }
+
+  function moveTabLeft(count) { moveTab(-(isNaN(count) ? 1 : count)); }
+  function moveTabRight(count) { moveTab((isNaN(count) ? 1 : count)); }
+  function putTab(count) { moveTab((isNaN(count) ? 99999 : count), true); }
+
+  /*
+   * Moves the currently selected tab by the specified number of steps (positive = right,
+   * negative = left), or to the specified position (if absolute = true).
+   */
+  function moveTab(count, absolute) {
+    getCurrentTabSet(true, function(tab, i, tabs) {
+      var destIndex = (absolute ? (count > tabs.length ? tabs.length : count - 1)
+                                : (i + count + tabs.length) % tabs.length);
+      chrome.tabs.move(tab.id, { index: destIndex, windowId: tab.windowId });
+    });
+  }
+
+  /*
+   * Moves the currently selected tab into the position and window marked previously
+   * or into a new window of its own, if no such position and window are currently marked.
+   */
+  function placeTab(callback) {
+    if (markedTab == null) {
+      getCurrentTabSet(false, function(tab, i, tabs) {
+        // mark the tab's current position and window, so it can go right back, if desired
+        markedTab = { index: i, windowId: tab.windowId };
+        chrome.windows.get(tab.windowId, function(win) {
+          chrome.windows.create({ url: "about:blank", width: win.width, height: win.height,
+                                  left: win.left, top: win.top, type: win.type,
+                                  incognito: win.incognito }, function(window) {
+            chrome.tabs.move(tab.id, { index: 1, windowId: window.id }, function(tab) {
+              chrome.tabs.getAllInWindow(tab.windowId, function(tabs) {
+                updateOpenTabs(tabs[0]);
+                selectionChangedHandlers.push(callback);
+                chrome.tabs.remove(tabs[0].id);
+              });
+            });
+          });
+        });
+      });
+    } else {
+      getCurrentTabSet(false, function(tab, i, tabs) {
+        chrome.windows.get(markedTab.windowId, function(destWindow) {
+          chrome.windows.get(tab.windowId, function(win) {
+            if (win.incognito == destWindow.incognito && win.type == destWindow.type) {
+              chrome.tabs.getAllInWindow(destWindow.id, function(tabs) {
+                var destIndex = (markedTab.index > tabs.length ? tabs.length : markedTab.index);
+                selectionChangedHandlers.push(callback);
+                chrome.tabs.move(tab.id, { index: destIndex, windowId: markedTab.windowId });
+              });
+            }
+          });
+        });
+      });
+    }
+  }
+
+  /*
+   * Marks the currently selected tab (or n-th tab in the window) position
+   * and window as the destination for following placeTab commands.
+   */
+  function markTab(count) {
+    chrome.tabs.getAllInWindow(null, function(tabs) {
+      if (isNaN(count)) {
+        for (var i = 0; i < tabs.length; i++) {
+          if (tabs[i].selected) {
+            markedTab = { index: i, windowId: tabs[i].windowId };
+          }
+        }
+      } else {
+        markedTab = { index: count - 1, windowId: tabs[0].windowId };
+      }
+    });
+  }
+
+  /*
+   * Discard any marked tab position and window so that the next
+   * placeTab command will put the tab into a new window of its own.
+   */
+  function unmarkTab(callback) { markedTab = null; }
 
   function removeTab(callback) {
     chrome.tabs.getSelected(null, function(tab) {
@@ -332,7 +420,10 @@
   chrome.tabs.onAttached.addListener(function(tabId, attachedInfo) {
     // We should update all the tabs in the old window and the new window.
     if (openTabs[tabId]) {
-      updatePositionsAndWindowsForAllTabsInWindow(openTabs[tabId].windowId);
+      var otherTabs = false;
+      var winId = openTabs[tabId].windowId;
+      for (var t in openTabs) { if (openTabs[t].windowId == winId) { otherTabs = true; break; } }
+      if (otherTabs) { updatePositionsAndWindowsForAllTabsInWindow(winId); }
     }
     updatePositionsAndWindowsForAllTabsInWindow(attachedInfo.newWindowId);
   });
@@ -499,7 +590,13 @@
     count = splitHash.count;
 
     if (command.length == 0) { return keysToCheck; }
-    if (isNaN(count)) { count = 1; }
+    /*
+     * Leave count as "NaN" if none was provided, so commands have the option of
+     * providing default behavior other than what they'd do for a count of "1".
+     * Of course, this means we need to take care to substitute "1" for "NaN",
+     * for commands that don't get the count passed or don't care.
+     */
+    //if (isNaN(count)) { count = 1; }
 
     if (keyToCommandRegistry[command]) {
       registryEntry = keyToCommandRegistry[command];
@@ -514,8 +611,10 @@
                          });
 
         refreshedCompletionKeys = true;
+      } else if (registryEntry.passCountToFunction) {
+        this[registryEntry.command](count);
       } else {
-        repeatFunction(this[registryEntry.command], count, 0);
+        repeatFunction(this[registryEntry.command], (isNaN(count) ? 1 : count), 0);
       }
 
       newKeyQueue = "";
@@ -528,7 +627,8 @@
       else
         newKeyQueue = (validFirstKeys[splitKey.second] ? splitKey.second : "");
     } else {
-      newKeyQueue = (validFirstKeys[command] ? count.toString() + command : "");
+      count = (isNaN(count) ? "" : count.toString());
+      newKeyQueue = (validFirstKeys[command] ? count + command : "");
     }
 
     // If we haven't sent the completion keys piggybacked on executePageCommand,
